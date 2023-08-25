@@ -1,1 +1,1 @@
-# windows-media-foundation
+# Samples of Windows Media Foundation
