@@ -10,24 +10,15 @@
 #include <Dbt.h>
 #include <shlwapi.h>
 
+const UINT WM_APP_AUDIO_PREVIEW_ERROR = WM_APP + 1;
 
-const UINT WM_APP_PREVIEW_ERROR = WM_APP + 1;
-const UINT32 TARGET_BIT_RATE = 240 * 1000;
-
-struct EncodingParameters
-{
-    GUID    subtype;
-    UINT32  bitrate;
-};
-
-
-class CVideoCapture :
+class CAudioCapture :
     public IMFSourceReaderCallback
 {
 public:
     static HRESULT CreateInstance(
         HWND     hwnd,
-        CVideoCapture** ppPlayer
+        CAudioCapture** ppPlayer
     );
 
     // IUnknown methods
@@ -54,10 +45,11 @@ public:
         return S_OK;
     }
 
-    HRESULT     StartCapture(IMFActivate* pActivate, const WCHAR* pwszFileName, const EncodingParameters& param);
+    HRESULT     StartCapture(IMFActivate* pActivate, const WCHAR* pwszFileName);
     HRESULT     EndCaptureSession();
     BOOL        IsCapturing();
     HRESULT     CheckDeviceLost(DEV_BROADCAST_HDR* pHdr, BOOL* pbDeviceLost);
+    HRESULT     ConfigureSession(IMFActivate* pActivate, const WCHAR* pwszFileName);
 
 protected:
 
@@ -69,16 +61,15 @@ protected:
     };
 
     // Constructor is private. Use static CreateInstance method to instantiate.
-    CVideoCapture(HWND hwnd);
+    CAudioCapture(HWND hwnd);
 
     // Destructor is private. Caller should call Release.
-    virtual ~CVideoCapture();
+    virtual ~CAudioCapture();
 
-    void    NotifyError(HRESULT hr) { PostMessage(m_hwndEvent, WM_APP_PREVIEW_ERROR, (WPARAM)hr, 0L); }
+    void    NotifyError(HRESULT hr) { PostMessage(m_hwndEvent, WM_APP_AUDIO_PREVIEW_ERROR, (WPARAM)hr, 0L); }
 
     HRESULT OpenMediaSource(IMFMediaSource* pSource);
-    HRESULT ConfigureCapture(const EncodingParameters& param);
-    //HRESULT EndCaptureInternal();
+    HRESULT ConfigureCapture();
 
     long                    m_nRefCount;        // Reference count.
     CRITICAL_SECTION        m_critsec;

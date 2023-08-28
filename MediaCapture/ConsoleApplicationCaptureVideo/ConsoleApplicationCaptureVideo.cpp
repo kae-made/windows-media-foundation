@@ -2,7 +2,14 @@
 //
 
 #include <iostream>
+
+//#define VIDEO_CAPTURE TRUE
+
+#if defined( VIDEO_CAPTURE)
 #include "CVideoCapture.h"
+#else
+#include "CAudioCapture.h"
+#endif
 #include <ks.h>
 #include <ksmedia.h>
 
@@ -30,6 +37,60 @@ HWND GetWindowHandleOfConsoleApp()
 
     return hwndFound;
 }
+
+HRESULT GetDevSource(const GUID& devSourceType, IMFActivate** ppDevice, DWORD index)
+{
+    UINT32 devCount = 0;
+    IMFActivate** ppDevices;
+
+    HRESULT hr = S_OK;
+    IMFAttributes* pAttributes = NULL;
+
+    WCHAR* pDevName = NULL;
+
+    *ppDevice = NULL;
+
+    hr = MFCreateAttributes(&pAttributes, 1);
+    if (FAILED(hr)) {
+        goto done;
+    }
+    hr = pAttributes->SetGUID(
+        MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+        devSourceType);
+    if (FAILED(hr)) {
+        goto done;
+    }
+    hr = MFEnumDeviceSources(pAttributes, &ppDevices, &devCount);
+    if (FAILED(hr) || devCount == 0) {
+        goto done;
+    }
+    SafeRelease(&pAttributes);
+
+    for (UINT32 i = 0; i < devCount; i++) {
+        IMFActivate* device = ppDevices[i];
+        hr = device->GetAllocatedString(
+            MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
+            &pDevName,
+            NULL);
+        if (FAILED(hr)) {
+            goto done;
+        }
+        std::cout << "Device Name - '" << pDevName << "'" << std::endl;
+        CoTaskMemFree(pDevName);
+        if (i == index) {
+            break;
+        }
+    }
+
+
+    *ppDevice = ppDevices[index];
+    (*ppDevice)->AddRef();
+
+done:
+    return hr;
+
+}
+
 int main()
 {
     std::cout << "Hello World!\n";
@@ -38,8 +99,11 @@ int main()
     DEV_BROADCAST_DEVICEINTERFACE di = { 0 };
     HDEVNOTIFY  g_hdevnotify = NULL;
 
+#if defined(VIDEO_CAPTURE)
+    EncodingParameters params;
+#endif
+
     UINT32 devCount = 0;
-    IMFActivate** ppDevices;
     IMFActivate* pDevice = NULL;
 
     HRESULT hr = S_OK;
@@ -47,14 +111,19 @@ int main()
 
     WCHAR* pDevName = NULL;
 
+#if VIDEO_CAPTURE
     CVideoCapture* pCapture;
-    
+#else
+    CAudioCapture* pCapture;
+#endif
 
-    IMFMediaSource* pSource = NULL;
     WCHAR* pwszSymbolicLink = NULL;
 
+#if VIDEO_CAPTURE
     LPCWSTR outputFileName = L"output.mp4";
-    EncodingParameters params;
+#else
+    LPCWSTR outputFileName = L"output.wav";
+#endif
 
     // Initialize the COM library
     hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
@@ -82,59 +151,53 @@ int main()
         hr = HRESULT_FROM_WIN32(GetLastError());
     }
 
+#if VIDEO_CAPTURE
+    hr = GetDevSource(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID, &pDevice, 0);
+#else
+    hr = GetDevSource(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_GUID, &pDevice, 1);
+#endif
 
-    hr = MFCreateAttributes(&pAttributes, 1);
     if (FAILED(hr)) {
         goto done;
     }
-    hr = pAttributes->SetGUID(
-        MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-        MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
-    if (FAILED(hr)) {
-        goto done;
-    }
-    hr = MFEnumDeviceSources(pAttributes, &ppDevices, &devCount);
-    if (FAILED(hr) || devCount == 0) {
-        goto done;
-    }
-    SafeRelease(&pAttributes);
 
-    pDevice = ppDevices[0];
-    pDevice->AddRef();
-    
-    hr = pDevice->GetAllocatedString(
-        MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
-        &pDevName,
-        NULL);
-    if (FAILED(hr)) {
-        goto done;
-    }
-    std::cout << "Device Name - '" << pDevName << "'" << std::endl;
-    CoTaskMemFree(pDevName);
 
     hr = pDevice->GetAllocatedString(
+#if VIDEO_CAPTURE
         MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
+#else
+        MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_SYMBOLIC_LINK,
+#endif
         &pwszSymbolicLink, NULL);
     if (FAILED(hr)) {
         goto done;
     }
 
+#if VIDEO_CAPTURE
     hr = CVideoCapture::CreateInstance(hwnd, &pCapture);
+#else
+    hr = CAudioCapture::CreateInstance(hwnd, &pCapture);
+#endif
     if (FAILED(hr)) {
         goto done;
     }
 
-    params.subtype = MFVideoFormat_H264;
+#if VIDEO_CAPTURE
+     params.subtype = MFVideoFormat_H264;
     params.bitrate = TARGET_BIT_RATE;
-
     hr = pCapture->StartCapture(pDevice, outputFileName, params);
+#else
+    hr = pCapture->StartCapture(pDevice, outputFileName);
+#endif
     if (FAILED(hr)) {
         goto done;
     }
 
-    Sleep(30 * 1000);
+    std::cout << "Start recording..." << std::endl;
+    Sleep(10 * 1000);
 
     hr = pCapture->EndCaptureSession();
+    std::cout << "End recoding." << std::endl;
 
     SafeRelease(&pCapture);
 

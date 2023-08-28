@@ -128,10 +128,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CAudioCapture.cpp" />
     <ClCompile Include="ConsoleApplicationCaptureVideo.cpp" />
     <ClCompile Include="CVideoCapture.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CAudioCapture.h" />
     <ClInclude Include="CVideoCapture.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
