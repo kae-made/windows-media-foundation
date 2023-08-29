@@ -75,7 +75,7 @@ HRESULT GetDevSource(const GUID& devSourceType, IMFActivate** ppDevice, DWORD in
         if (FAILED(hr)) {
             goto done;
         }
-        std::cout << "Device Name - '" << pDevName << "'" << std::endl;
+        std::wcout << "Device Name - '" << pDevName << "'" << std::endl;
         CoTaskMemFree(pDevName);
         if (i == index) {
             break;
@@ -98,6 +98,7 @@ int main()
     HWND hwnd = GetWindowHandleOfConsoleApp();
     DEV_BROADCAST_DEVICEINTERFACE di = { 0 };
     HDEVNOTIFY  g_hdevnotify = NULL;
+    UINT32 roundMax = 2;
 
 #if defined(VIDEO_CAPTURE)
     EncodingParameters params;
@@ -122,7 +123,8 @@ int main()
 #if VIDEO_CAPTURE
     LPCWSTR outputFileName = L"output.mp4";
 #else
-    LPCWSTR outputFileName = L"output.wav";
+    LPCWSTR outputFileNames[4] = { L"output0.wav",L"output1.wav" ,L"output2.wav" ,L"output3.wav" };
+//    std::wcout << "file name" << outputFileNames[0] << std::endl;
 #endif
 
     // Initialize the COM library
@@ -186,17 +188,39 @@ int main()
      params.subtype = MFVideoFormat_H264;
     params.bitrate = TARGET_BIT_RATE;
     hr = pCapture->StartCapture(pDevice, outputFileName, params);
-#else
     hr = pCapture->StartCapture(pDevice, outputFileName);
-#endif
+#else
+    hr = pCapture->ConfigureMediaSource(pDevice);
     if (FAILED(hr)) {
         goto done;
     }
 
-    std::cout << "Start recording..." << std::endl;
-    Sleep(10 * 1000);
+    for (UINT32 round = 0; round < roundMax; round++) {
+        hr = pCapture->ConfigureMediaSink(outputFileNames[round]);
+        if (FAILED(hr)) {
+            goto done;
+        }
+        hr = pCapture->Start();
+#endif
+        if (FAILED(hr)) {
+            goto done;
+        }
 
-    hr = pCapture->EndCaptureSession();
+        std::cout << "Start recording..." << std::endl;
+        Sleep(10 * 1000);
+
+#if defined(VIDEO_CAPTURE)
+        hr = pCapture->EndCaptureSession();
+#else
+        std::cout << "Stop recording." << std::endl;
+        hr = pCapture->StopAndFlush();
+        if (FAILED(hr)) {
+            goto done;
+        }
+        std::wcout << "Flushed to " << outputFileNames[round] << std::endl;
+    }
+    hr = pCapture->EndSession();
+#endif
     std::cout << "End recoding." << std::endl;
 
     SafeRelease(&pCapture);

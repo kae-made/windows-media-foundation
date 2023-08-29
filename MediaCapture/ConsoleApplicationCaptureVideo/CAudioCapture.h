@@ -49,7 +49,12 @@ public:
     HRESULT     EndCaptureSession();
     BOOL        IsCapturing();
     HRESULT     CheckDeviceLost(DEV_BROADCAST_HDR* pHdr, BOOL* pbDeviceLost);
-    HRESULT     ConfigureSession(IMFActivate* pActivate, const WCHAR* pwszFileName);
+
+    HRESULT     ConfigureMediaSource(IMFActivate* pDevice);
+    HRESULT     ConfigureMediaSink(const WCHAR* pwszFileName);
+    HRESULT     Start();
+    HRESULT     StopAndFlush();
+    HRESULT     EndSession();
 
 protected:
 
@@ -71,6 +76,10 @@ protected:
     HRESULT OpenMediaSource(IMFMediaSource* pSource);
     HRESULT ConfigureCapture();
 
+    HRESULT ConfigureSourceReader(IMFSourceReader* pReader);
+    HRESULT ConfigureEncoder(IMFMediaType* pType, IMFSinkWriter* pWriter, DWORD* pdwStreamIndex);
+
+
     long                    m_nRefCount;        // Reference count.
     CRITICAL_SECTION        m_critsec;
 
@@ -78,6 +87,8 @@ protected:
 
     IMFSourceReader* m_pReader;
     IMFSinkWriter* m_pWriter;
+
+    IMFMediaType* m_pSourceMediaType;
 
     BOOL                    m_bFirstSample;
     LONGLONG                m_llBaseTime;

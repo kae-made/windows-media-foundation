@@ -223,15 +223,12 @@ HRESULT CAudioCapture::OpenMediaSource(IMFMediaSource* pSource)
 }
 
 //-------------------------------------------------------------------
-// StartCapture
+// ConfigureMediaSource
 //
-// Start capturing.
+// Configure media source.
 //-------------------------------------------------------------------
 
-HRESULT CAudioCapture::ConfigureSession(
-    IMFActivate* pActivate,
-    const WCHAR* pwszFileName
-)
+HRESULT CAudioCapture::ConfigureMediaSource(IMFActivate* pDevice)
 {
     HRESULT hr = S_OK;
 
@@ -242,7 +239,7 @@ HRESULT CAudioCapture::ConfigureSession(
     EnterCriticalSection(&m_critsec);
 
     // Create the media source for the device.
-    hr = pActivate->ActivateObject(
+    hr = pDevice->ActivateObject(
         __uuidof(IMFMediaSource),
         (void**)&pSource
     );
@@ -252,7 +249,7 @@ HRESULT CAudioCapture::ConfigureSession(
 
     if (SUCCEEDED(hr))
     {
-        hr = pActivate->GetAllocatedString(
+        hr = pDevice->GetAllocatedString(
             MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_SYMBOLIC_LINK,
             &m_pwszSymbolicLink,
             NULL
@@ -264,6 +261,38 @@ HRESULT CAudioCapture::ConfigureSession(
         hr = OpenMediaSource(pSource);
     }
 
+    if (SUCCEEDED(hr)) {
+        hr = ConfigureSourceReader(m_pReader);
+
+        if (SUCCEEDED(hr))
+        {
+            hr = m_pReader->GetCurrentMediaType(
+                (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM,
+                &m_pSourceMediaType
+            );
+        }
+    }
+
+    LeaveCriticalSection(&m_critsec);
+
+    return hr;
+}
+
+//-------------------------------------------------------------------
+// ConfigureMediaSink
+//
+// Configure media sink.
+//-------------------------------------------------------------------
+
+HRESULT CAudioCapture::ConfigureMediaSink(
+    const WCHAR* pwszFileName
+)
+{
+    HRESULT hr = S_OK;
+    DWORD sink_stream = 0;
+
+    EnterCriticalSection(&m_critsec);
+
     // Create the sink writer 
     if (SUCCEEDED(hr))
     {
@@ -274,15 +303,106 @@ HRESULT CAudioCapture::ConfigureSession(
             &m_pWriter
         );
     }
-
-    // Set up the encoding parameters.
     if (SUCCEEDED(hr))
     {
-        hr = ConfigureCapture();
+        hr = ConfigureEncoder(m_pSourceMediaType, m_pWriter, &sink_stream);
     }
 
-    SafeRelease(&pSource);
+
+
+    if (SUCCEEDED(hr))
+    {
+        hr = m_pWriter->SetInputMediaType(sink_stream, m_pSourceMediaType, NULL);
+    }
+
     LeaveCriticalSection(&m_critsec);
+    
+    return hr;
+}
+
+//-------------------------------------------------------------------
+// Start
+//
+// Start capturing.
+//-------------------------------------------------------------------
+
+HRESULT CAudioCapture::Start()
+{
+    HRESULT hr = S_OK;
+
+    EnterCriticalSection(&m_critsec);
+
+    if (m_pWriter) {
+        hr = m_pWriter->BeginWriting();
+    }
+    else {
+        hr = S_FALSE;
+    }
+
+
+    if (SUCCEEDED(hr))
+    {
+        m_bFirstSample = TRUE;
+        m_llBaseTime = 0;
+
+        // Request the first audio frame.
+        // https://learn.microsoft.com/en-us/windows/win32/api/mfreadwrite/nf-mfreadwrite-imfsourcereader-readsample#asynchronous-mode
+        // variables should be NULL in the case of asynchronous
+        hr = m_pReader->ReadSample(
+            (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM,
+            0,
+            NULL,
+            NULL,
+            NULL,
+            NULL
+        );
+    }
+
+
+    LeaveCriticalSection(&m_critsec);
+
+    return hr;
+}
+
+//-------------------------------------------------------------------
+// StopAndFlush
+//
+// Stop capturing and flush out contents to sink.
+//-------------------------------------------------------------------
+HRESULT CAudioCapture::StopAndFlush()
+{
+    HRESULT hr = S_OK;
+
+    EnterCriticalSection(&m_critsec);
+
+    if (m_pWriter)
+    {
+        hr = m_pWriter->Finalize();
+    }
+
+    SafeRelease(&m_pWriter);
+
+    LeaveCriticalSection(&m_critsec);
+
+    return hr;
+}
+
+//-------------------------------------------------------------------
+// EndSession
+//
+// End capturing session.
+//-------------------------------------------------------------------
+HRESULT CAudioCapture::EndSession()
+{
+    HRESULT hr = S_OK;
+
+    EnterCriticalSection(&m_critsec);
+
+    SafeRelease(&m_pReader);
+    SafeRelease(&m_pSourceMediaType);
+
+    LeaveCriticalSection(&m_critsec);
+
     return hr;
 }
 
@@ -402,6 +522,7 @@ HRESULT CAudioCapture::EndCaptureSession()
     return hr;
 }
 
+
 BOOL CAudioCapture::IsCapturing()
 {
     EnterCriticalSection(&m_critsec);
@@ -477,7 +598,7 @@ done:
 //  Sets the media type on the source reader.
 //-------------------------------------------------------------------
 
-HRESULT ConfigureAudioSourceReader(IMFSourceReader* pReader)
+HRESULT CAudioCapture::ConfigureSourceReader(IMFSourceReader* pReader)
 {
     // The list of acceptable types.
     GUID subtypes[] = {
@@ -627,7 +748,7 @@ done:
     return hr;
 }
 
-HRESULT ConfigureEncoder(
+HRESULT CAudioCapture::ConfigureEncoder(
     IMFMediaType* pType,
     IMFSinkWriter* pWriter,
     DWORD* pdwStreamIndex
@@ -715,7 +836,7 @@ HRESULT CAudioCapture::ConfigureCapture()
 
     IMFMediaType* pType = NULL;
 
-    hr = ConfigureAudioSourceReader(m_pReader);
+    hr = ConfigureSourceReader(m_pReader);
 
     if (SUCCEEDED(hr))
     {
