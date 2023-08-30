@@ -3,7 +3,7 @@
 
 #include <iostream>
 
-//#define VIDEO_CAPTURE TRUE
+#define VIDEO_CAPTURE TRUE
 
 #if defined( VIDEO_CAPTURE)
 #include "CVideoCapture.h"
@@ -188,7 +188,6 @@ int main()
      params.subtype = MFVideoFormat_H264;
     params.bitrate = TARGET_BIT_RATE;
     hr = pCapture->StartCapture(pDevice, outputFileName, params);
-    hr = pCapture->StartCapture(pDevice, outputFileName);
 #else
     hr = pCapture->ConfigureMediaSource(pDevice);
     if (FAILED(hr)) {
